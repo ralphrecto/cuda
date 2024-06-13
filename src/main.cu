@@ -38,9 +38,9 @@ __device__ float incr(float a) {
 
 __device__ mapf d_incr = incr;
 
-__global__ void map_kernel(float* a, float* b, float (*func)(float)) {
+__global__ void map_kernel(float* a, float* b, int n, float (*func)(float)) {
   int i = blockDim.x*blockIdx.x + threadIdx.x;
-  b[i] = func(a[i]);
+  if (i < n) b[i] = func(a[i]);
 }
 
 void map(float* a, float* b, int n, float (*func)(float)) {
@@ -52,8 +52,7 @@ void map(float* a, float* b, int n, float (*func)(float)) {
   cudaMalloc((void**) &d_b, size);
 
   cudaMemcpy(d_a, a, size, cudaMemcpyHostToDevice);
-
-  map_kernel<<<ceil(n / (1.0 * THREADS_PER_BLOCK)), THREADS_PER_BLOCK>>>(d_a, d_b, func);
+map_kernel<<<ceil(n / (1.0 * THREADS_PER_BLOCK)), THREADS_PER_BLOCK>>>(d_a, d_b, n, func);
 
   cudaMemcpy(b, d_b, size, cudaMemcpyDeviceToHost);
 
@@ -63,7 +62,6 @@ void map(float* a, float* b, int n, float (*func)(float)) {
 
 int main() {
   float a[4] = {1, 1, 1, 1};
-  float b[4] = {1, 2, 1, 0};
   float* c = new float[4];
 
   mapf h_incr;
