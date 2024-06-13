@@ -1,6 +1,8 @@
 #include "stdio.h"
 #include "cuda.h"
 
+#define THREADS_PER_BLOCK 256
+
 __global__ void vector_add_kernel(float* a, float* b, float* c, int n) {
   int i = blockDim.x*blockIdx.x + threadIdx.x;
   if (i < n) {
@@ -23,16 +25,16 @@ void vector_add(float* a, float* b, float* c, int n) {
   cudaMemcpy(d_b, b, size, cudaMemcpyHostToDevice);
   cudaMemcpy(d_c, c, size, cudaMemcpyHostToDevice);
 
-  vector_add_kernel<<<1,3>>>(d_a, d_b, d_c, 3);
+  vector_add_kernel<<<ceil(n / (1.0 * THREADS_PER_BLOCK)), THREADS_PER_BLOCK>>>(d_a, d_b, d_c, n);
 
   cudaMemcpy(c, d_c, size, cudaMemcpyDeviceToHost);
 }
 
 int main() {
-  float a[3] = {1, 1, 1};
-  float b[3] = {1, 2, 1};
-  float* c = new float[3];
+  float a[4] = {1, 1, 1, 1};
+  float b[4] = {1, 2, 1, 0};
+  float* c = new float[4];
 
-  vector_add(a, b, c, 3);
-  printf("%f %f %f", c[0], c[1], c[2]);
+  vector_add(a, b, c, 4);
+  printf("%f %f %f %f", c[0], c[1], c[2], c[3]);
 }
