@@ -98,6 +98,16 @@ __global__ void matmul(
 
   float dotprod = 0;
   for (int i = 0; i < dim_a.y; i++) {
+    // printf("(row %d, col %d) a[%d, %d] %f | b[%d, %d] %f\n",
+    //   row,
+    //   col,
+    //   (row * dim_a.x),
+    //   i,
+    //   a[(row * dim_a.x) + i],
+    //   (i * dim_b.x),
+    //   col,
+    //   b[(i * dim_b.x) + col]
+    // );
     dotprod += (a[(row * dim_a.x) + i] * b[(i * dim_b.x) + col]);
   }
 
@@ -121,9 +131,9 @@ int main() {
     };
 
     float h_b[3][3] = {
-        {1.0, 1.0, 1.0},
-        {1.0, 1.0, 1.0},
-        {1.0, 1.0, 1.0},
+        {1.0, 0.0, 0.0},
+        {0.0, 1.0, 0.0},
+        {0.0, 0.0, 1.0},
     };
 
     float h_c[3][3] = {
