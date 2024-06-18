@@ -77,6 +77,8 @@ int map_main() {
   return 0;
 }
 
+// matmul (global mem only) impl
+
 __global__ void matmul(
   float* a,
   dim3 dim_a,
