@@ -14,9 +14,19 @@
 // TODO: pack this more densely (1 bit/cell instead of 1 byte/cell)
 typedef unsigned char* gol_grid;
 
+static int grid_index(unsigned int x, unsigned int y) {
+    return y * GRID_WIDTH + x;
+}
+
 // set grid to 1/0 at x/y position; handle shadow rows/cols
 void set(gol_grid grid, unsigned int x, unsigned int y, bool live) {
+    int i = grid_index(x, y);
+    grid[i] = (unsigned char) (live ? 1 : 0);
+}
 
+bool is_live(gol_grid grid, unsigned int x, unsigned int y) {
+    int i = grid_index(x, y);
+    return grid[i] == 0;
 }
 
 size_t get_grid_size(unsigned int width, unsigned int height) {
@@ -26,37 +36,37 @@ size_t get_grid_size(unsigned int width, unsigned int height) {
 }
 
 // allocate + randomly initialize the grid
-gol_grid create_grid(unsigned int width, unsigned int height) {
-    size_t grid_size = get_grid_size(width, height);
+gol_grid create_grid() {
+    size_t grid_size = get_grid_size(GRID_WIDTH, GRID_HEIGHT);
     gol_grid grid = (gol_grid) malloc(grid_size);
 
     // initialize non-shadow cells
-    for (int x = 1; x < width + 1; x++) {
-        for (int y = 1; y < height + 1; y++) {
-            int i = y * height + x;
+    for (int x = 1; x < GRID_WIDTH + 1; x++) {
+        for (int y = 1; y < GRID_HEIGHT + 1; y++) {
+            int i = grid_index(x, y);
             grid[i] = (unsigned char) (rand() % sizeof(unsigned char));
         }
     }
 
     // initialize shadow rows
-    for (int x = 1; x < width + 1; x++) {
-        int i_first = x;
-        int i_first_shadow = (width * (height - 1)) + x;
+    for (int x = 1; x < GRID_WIDTH + 1; x++) {
+        int i_first = grid_index(x, 0);
+        int i_first_shadow = grid_index(x, GRID_HEIGHT - 1);
 
-        int i_last = (width * height) + x;
-        int i_last_shadow = width + x;
+        int i_last = grid_index(x, GRID_HEIGHT);
+        int i_last_shadow = grid_index(x, 1);
 
         grid[i_first] = grid[i_first_shadow];
         grid[i_last] = grid[i_last_shadow];
     }
 
     // initialize shadow columns
-    for (int y = 1; y < height + 1; y++) {
-        int i_first = y * width;
-        int i_first_shadow = y * width + (width - 1);
+    for (int y = 1; y < GRID_HEIGHT + 1; y++) {
+        int i_first = grid_index(0, y);
+        int i_first_shadow = grid_index(GRID_WIDTH - 1, y);
 
-        int i_last = y * width + width;
-        int i_last_shadow = y * width + 1;
+        int i_last = grid_index(GRID_WIDTH, y);
+        int i_last_shadow = grid_index(1, y);
 
         grid[i_first] = grid[i_first_shadow];
         grid[i_last] = grid[i_last_shadow];
@@ -81,7 +91,7 @@ int main() {
 
     // initialize state
     size_t grid_size = get_grid_size(GRID_WIDTH, GRID_HEIGHT);
-    gol_grid h_grid = create_grid(GRID_WIDTH, GRID_HEIGHT);
+    gol_grid h_grid = create_grid();
 
     gol_grid d_grid;
     cudaMalloc((void**) &d_grid, grid_size);
