@@ -3,10 +3,13 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <cuda.h>
+#include <iostream>
 
 #define GRID_WIDTH   640
 #define GRID_HEIGHT  480
 #define SEED         1337
+#define BLOCK_WIDTH  32
+#define BLOCK_HEIGHT 32
 
 // grid helpers
 
@@ -15,6 +18,10 @@
 // - first/last row/col are shadows -- copies of wraparound. so actual cells
 //   start at (1, 1) for example.
 typedef unsigned char* gol_grid;
+
+__host__ __device__ static int block_index(int x, int y) {
+    return y * BLOCK_WIDTH + x;
+}
 
 __host__ __device__ static int grid_index(int x, int y) {
     return y * GRID_WIDTH + x;
@@ -81,8 +88,11 @@ gol_grid create_grid() {
 
 // kernel code
 
-__global__ void gol_kernel(gol_grid* grid) {
-    extern __shared__ gol_grid block_grid;
+__global__ void gol_kernel(
+    gol_grid grid,
+    gol_grid next_grid
+) {
+    extern __shared__ unsigned char block_grid[];
 
     // logical coords (start at (0, 0))
     int x = blockDim.x * blockIdx.x + threadIdx.x;
@@ -95,11 +105,19 @@ __global__ void gol_kernel(gol_grid* grid) {
     int grid_y = y+1;
 
     // initialize block grid in shared mem
-    for (int xi = grid_x - 1; xi < grid_x + 2 && xi <= GRID_WIDTH && xi >= 0; xi++) {
-        for (int yi = grid_y - 1; yi < grid_y + 2 && yi <= GRID_HEIGHT && yi >= 0; yi++) {
+    for (int dx = -1; dx < 2; dx++) {
+        for (int dy = -1; dy < 2; dy++) {
+            int xi = grid_x + dx;
+            int yi = grid_y + dy;
+
+            if (xi < 0 || xi >= GRID_WIDTH || yi < 0 || yi >= GRID_HEIGHT) continue;
+
             // TODO remove redundant reads/writes of overlaps
+            // TODO double check this pointer math
             int i = grid_index(xi, yi);
-            block_grid[i] = (*grid)[i];
+            int block_i = block_index(dx + 1, dy + 1);
+
+            block_grid[block_i] = grid[i];
         }
     }
 
@@ -129,7 +147,15 @@ __global__ void gol_kernel(gol_grid* grid) {
         next_alive = true;
     }
 
-    // TODO WIP
+    set(next_grid, grid_x, grid_y, next_alive);
+}
+
+void checkCudaError(const char* message) {
+    cudaError_t error = cudaGetLastError();
+    if (error != cudaSuccess) {
+        std::cerr << "CUDA Error after " << message << ": " << cudaGetErrorName(error) << "; " << cudaGetErrorString(error) << std::endl;
+        exit(EXIT_FAILURE);
+    }
 }
 
 int main() {
@@ -140,8 +166,20 @@ int main() {
     gol_grid h_grid = create_grid();
 
     gol_grid d_grid;
+    gol_grid d_grid_next;
+
     cudaMalloc((void**) &d_grid, grid_size);
+    cudaMalloc((void**) &d_grid_next, grid_size);
     cudaMemcpy(d_grid, h_grid, grid_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_grid_next, h_grid, grid_size, cudaMemcpyHostToDevice);
+
+    dim3 grid_dim(GRID_WIDTH / BLOCK_WIDTH, GRID_HEIGHT / BLOCK_HEIGHT);
+    dim3 block_dim(BLOCK_WIDTH, BLOCK_HEIGHT);
+    size_t block_size = (BLOCK_WIDTH + 2) * (BLOCK_HEIGHT + 2) * sizeof(unsigned char);
+
+    gol_kernel<<<grid_dim, block_dim, block_size>>>(d_grid, d_grid_next);
+    cudaDeviceSynchronize();
+    checkCudaError("game of life kernel");
 
     free(h_grid);
     cudaFree(d_grid);
