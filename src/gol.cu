@@ -10,25 +10,29 @@
 
 // grid helpers
 
-// representation: 1 cell == 1 unsigned char
-// TODO: pack this more densely (1 bit/cell instead of 1 byte/cell)
+// - representation: 1 cell == 1 unsigned char
+// - TODO: pack this more densely (1 bit/cell instead of 1 byte/cell)
+// - first/last row/col are shadows -- copies of wraparound. so actual cells
+//   start at (1, 1) for example.
 typedef unsigned char* gol_grid;
 
-static int grid_index(unsigned int x, unsigned int y) {
+__host__ __device__ static int grid_index(int x, int y) {
     return y * GRID_WIDTH + x;
 }
 
 // set grid to 1/0 at x/y position; handle shadow rows/cols
-void set(gol_grid grid, unsigned int x, unsigned int y, bool live) {
+__host__ __device__ void set(gol_grid grid, unsigned int x, unsigned int y, bool live) {
     int i = grid_index(x, y);
     grid[i] = (unsigned char) (live ? 1 : 0);
 }
 
-bool is_live(gol_grid grid, unsigned int x, unsigned int y) {
+// indicates whether cell at (x, y) is alive
+__host__ __device__ bool is_live(gol_grid grid, unsigned int x, unsigned int y) {
     int i = grid_index(x, y);
     return grid[i] == 0;
 }
 
+// computes byte size of entire grid
 size_t get_grid_size(unsigned int width, unsigned int height) {
     // pad w/ shadow/wraparound cells
     unsigned int num_cells = (width + 2) * (height + 2);
@@ -77,13 +81,55 @@ gol_grid create_grid() {
 
 // kernel code
 
-__global__ void gol_kernel() {
+__global__ void gol_kernel(gol_grid* grid) {
     extern __shared__ gol_grid block_grid;
 
+    // logical coords (start at (0, 0))
     int x = blockDim.x * blockIdx.x + threadIdx.x;
     int y = blockDim.y * blockIdx.y + threadIdx.y;
 
     if (x >= GRID_WIDTH || y >= GRID_HEIGHT) return;
+
+    // mapped to grid coords, taking shadow rows/cols into account
+    int grid_x = x+1;
+    int grid_y = y+1;
+
+    // initialize block grid in shared mem
+    for (int xi = grid_x - 1; xi < grid_x + 2 && xi <= GRID_WIDTH && xi >= 0; xi++) {
+        for (int yi = grid_y - 1; yi < grid_y + 2 && yi <= GRID_HEIGHT && yi >= 0; yi++) {
+            // TODO remove redundant reads/writes of overlaps
+            int i = grid_index(xi, yi);
+            block_grid[i] = (*grid)[i];
+        }
+    }
+
+    __syncthreads();
+
+    // compute state for tick
+    int live_neighbors = 0;
+    for (int xi = grid_x - 1; xi < grid_x + 2 && xi <= GRID_WIDTH && xi >= 0; xi++) {
+        for (int yi = grid_y - 1; yi < grid_y + 2 && yi <= GRID_HEIGHT && yi >= 0; yi++) {
+            if (xi == grid_x && yi == grid_y) continue;
+
+            if (is_live(block_grid, xi, yi)) {
+                live_neighbors += 1;
+            }
+        }
+    }
+
+    bool currently_alive = is_live(block_grid, grid_x, grid_y);
+    bool next_alive = false;
+    if (currently_alive) {
+        if (live_neighbors == 2 || live_neighbors == 3) {
+            next_alive = true;
+        } else {
+            next_alive = false;
+        }
+    } else if (live_neighbors == 3) {
+        next_alive = true;
+    }
+
+    // TODO WIP
 }
 
 int main() {
