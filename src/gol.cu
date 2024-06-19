@@ -36,7 +36,7 @@ __host__ __device__ void set(gol_grid grid, unsigned int x, unsigned int y, bool
 // indicates whether cell at (x, y) is alive
 __host__ __device__ bool is_live(gol_grid grid, unsigned int x, unsigned int y) {
     int i = grid_index(x, y);
-    return grid[i] == 0;
+    return grid[i] > 0;
 }
 
 // computes byte size of entire grid
@@ -115,7 +115,7 @@ __global__ void gol_kernel(
             // TODO remove redundant reads/writes of overlaps
             // TODO double check this pointer math
             int i = grid_index(xi, yi);
-            int block_i = block_index(dx + 1, dy + 1);
+            int block_i = block_index(xi % BLOCK_WIDTH, yi % BLOCK_HEIGHT);
 
             block_grid[block_i] = grid[i];
         }
@@ -129,13 +129,14 @@ __global__ void gol_kernel(
         for (int yi = grid_y - 1; yi < grid_y + 2 && yi <= GRID_HEIGHT && yi >= 0; yi++) {
             if (xi == grid_x && yi == grid_y) continue;
 
-            if (is_live(block_grid, xi, yi)) {
+            int block_i = block_index(xi % BLOCK_WIDTH, yi % BLOCK_HEIGHT);
+            if (block_grid[block_i] > 0) {
                 live_neighbors += 1;
             }
         }
     }
 
-    bool currently_alive = is_live(block_grid, grid_x, grid_y);
+    bool currently_alive = block_grid[block_index(grid_x % BLOCK_WIDTH, grid_y % BLOCK_HEIGHT)];
     bool next_alive = false;
     if (currently_alive) {
         if (live_neighbors == 2 || live_neighbors == 3) {
@@ -158,7 +159,15 @@ void checkCudaError(const char* message) {
     }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+    int num_iter;
+    if (argc != 2) {
+        printf("%d [num iterations]\n");
+        exit(1);
+    } else {
+        num_iter = atoi(argv[1]);
+    }
+
     srand(SEED);
 
     // initialize state
@@ -177,10 +186,23 @@ int main() {
     dim3 block_dim(BLOCK_WIDTH, BLOCK_HEIGHT);
     size_t block_size = (BLOCK_WIDTH + 2) * (BLOCK_HEIGHT + 2) * sizeof(unsigned char);
 
-    gol_kernel<<<grid_dim, block_dim, block_size>>>(d_grid, d_grid_next);
-    cudaDeviceSynchronize();
-    checkCudaError("game of life kernel");
+    printf("starting game of life sim...");
+
+    for (int i = 0; i < num_iter; i++) {
+        gol_kernel<<<grid_dim, block_dim, block_size>>>(d_grid, d_grid_next);
+        cudaDeviceSynchronize();
+        checkCudaError("game of life kernel");
+
+        if (i % 100 == 0 && i > 0) {
+            printf("num iterations: %d\n", i);
+        }
+    }
+
+    printf("done!\n");
+    printf("total num iterations: %d\n", num_iter);
 
     free(h_grid);
     cudaFree(d_grid);
+
+    return 0;
 }
