@@ -5,8 +5,8 @@
 #include <cuda.h>
 #include <iostream>
 
-#define GRID_WIDTH   640
-#define GRID_HEIGHT  480
+#define GRID_WIDTH   64
+#define GRID_HEIGHT  64
 #define SEED         1337
 #define BLOCK_WIDTH  32
 #define BLOCK_HEIGHT 32
@@ -186,15 +186,33 @@ int main(int argc, char* argv[]) {
     dim3 block_dim(BLOCK_WIDTH, BLOCK_HEIGHT);
     size_t block_size = (BLOCK_WIDTH + 2) * (BLOCK_HEIGHT + 2) * sizeof(unsigned char);
 
-    printf("starting game of life sim...");
+    printf("starting game of life sim...\n");
+    printf("\x1b[2J");
 
     for (int i = 0; i < num_iter; i++) {
         gol_kernel<<<grid_dim, block_dim, block_size>>>(d_grid, d_grid_next);
         cudaDeviceSynchronize();
         checkCudaError("game of life kernel");
 
-        if (i % 100 == 0 && i > 0) {
+        gol_grid d_temp = d_grid;
+        d_grid = d_grid_next;
+        d_grid_next = d_temp;
+
+        if (i % 100 == 0 && i > 0 || i == 0) {
             printf("num iterations: %d\n", i);
+
+            cudaMemcpy(h_grid, d_grid, grid_size, cudaMemcpyDeviceToHost);
+            for (int x = 1; x < GRID_WIDTH + 1; x++) {
+                for (int y = 1; y < GRID_HEIGHT + 1; y++) {
+                    int i = grid_index(x, y);
+                    if (h_grid[i] > 0) {
+                        printf("x");
+                    } else {
+                        printf("%d", h_grid[i], i);
+                    }
+                }
+                printf("\n");
+            }
         }
     }
 
