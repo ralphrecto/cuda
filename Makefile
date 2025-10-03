@@ -19,8 +19,8 @@ all: $(TARGET)
 
 # Rule to build the executable
 # This links the object file into the final executable
-$(TARGET): src/$(SOURCE)
-	$(NVCC) $(NVCCFLAGS) -o bin/$(TARGET) src/$(SOURCE)
+$(TARGET): cuda/$(SOURCE)
+	$(NVCC) $(NVCCFLAGS) -o bin/$(TARGET) cuda/$(SOURCE)
 
 # Rule to clean up generated files
 .PHONY: clean

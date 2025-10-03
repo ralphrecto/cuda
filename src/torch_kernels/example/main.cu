@@ -29,3 +29,53 @@ void sigmoid_add_cuda(const float* x, const float* y, float* output, int size) {
   sigmoid_add_kernel<<<blocks, threads>>>(x, y, output, size);
   C10_CUDA_KERNEL_LAUNCH_CHECK();
 }
+
+__global__ void sum_kernel(
+    const float* __restrict__ x,
+    float* __restrict__ output,
+    const int size) {
+  const int index = blockIdx.x * blockDim.x + threadIdx.x;
+  if (index < size) {
+    atomicAdd(output, x[index]);
+  }
+}
+
+void sum_cuda(const float* x, float* output, int size) {
+  const int threads = 1024;
+  const int blocks = (size + threads - 1) / threads;
+  sum_kernel<<<blocks, threads>>>(x, output, size);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
+
+__global__ void sum_fast_kernel(
+    const float* __restrict__ x,
+    float* __restrict__ output,
+    const int size) {
+  const int tid = threadIdx.x;
+  const int index = blockIdx.x * blockDim.x + tid;
+  __shared__ float s_x[1024];
+
+  if (tid >= 1024) {
+    return;
+  }
+
+  s_x[tid] = x[index];
+  __syncthreads();
+
+  for (int stride = blockDim.x >> 1; stride > 0; stride >>= 1) {
+    if (tid < stride) {
+      s_x[tid] += s_x[tid + stride];
+    } 
+
+    __syncthreads();
+  }
+
+  if (tid == 0) atomicAdd(output, s_x[0]);
+}
+
+void sum_fast_cuda(const float* x, float* output, int size) {
+  const int threads = 1024;
+  const int blocks = (size + threads - 1) / threads;
+  sum_kernel<<<blocks, threads>>>(x, output, size);
+  C10_CUDA_KERNEL_LAUNCH_CHECK();
+}
